@@ -113,7 +113,7 @@ async function main() {
         type: "BLACK",
       },
     });
-    
+
     console.log(`\nSeeding completed successfully!`);
     console.log(`Summary:`);
     console.log(`   - Decks created: ${totalDecksCreated}`);

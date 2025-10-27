@@ -16,7 +16,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${fonts.inter.className} scroll-smooth antialiased dark`} suppressHydrationWarning>
+    <html lang="en" className={`${fonts.inter.className} scroll-smooth antialiased`} suppressHydrationWarning>
       <body>
         <TRPCReactProvider>{children}</TRPCReactProvider>
       </body>

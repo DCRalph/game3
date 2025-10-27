@@ -17,7 +17,7 @@ app.prepare().then(() => {
     handle(req, res, parsedUrl).catch(console.error)
   })
 
-  if (!dev)
+  // if (!dev)
     createSocketServer(httpServer);
 
   httpServer

@@ -1,5 +1,6 @@
 import { authRouter } from "~/server/api/routers/auth";
 import { roomRouter } from "~/server/api/routers/room";
+import { cahRouter } from "~/server/api/routers/cah";
 import { createCallerFactory, createTRPCRouter } from "~/server/api/trpc";
 
 /**
@@ -9,7 +10,8 @@ import { createCallerFactory, createTRPCRouter } from "~/server/api/trpc";
  */
 export const appRouter = createTRPCRouter({
   auth: authRouter,
-    room: roomRouter,
+  room: roomRouter,
+  cah: cahRouter,
 });
 
 // export type definition of API

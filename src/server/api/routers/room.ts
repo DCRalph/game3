@@ -105,7 +105,7 @@ export const roomRouter = createTRPCRouter({
       }
 
       // Check if room is in a joinable status
-      if (room.status === "SETUP") {
+      if (room.status === "SETUP" && room.creatorId !== ctx.session.userId) {
         throw new Error("Room is still being set up");
       }
 
