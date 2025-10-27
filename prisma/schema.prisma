@@ -40,6 +40,7 @@ model User {
   socketId String? @unique
 
   rooms Room[]
+  createdRooms Room[] @relation("RoomCreator")
 
   CAHPlayers CAHPlayer[]
 
@@ -49,6 +50,13 @@ model User {
 
 enum GameType {
   CAH
+}
+
+enum RoomStatus {
+  SETUP
+  WAITING_FOR_PLAYERS
+  IN_PROGRESS
+  COMPLETED
 }
 
 model Room {
@@ -62,11 +70,17 @@ model Room {
   users User[]
   maxUsers Int @default(16)
 
+  status RoomStatus @default(SETUP)
+
   gameType GameType
+
+  creatorId String
+  creator   User @relation("RoomCreator", fields: [creatorId], references: [id])
 
   CAHGame CAHGame?
 
   @@index([code])
+  @@index([creatorId])
 }
 
 model CAHDeck {

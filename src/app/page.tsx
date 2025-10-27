@@ -13,7 +13,7 @@ export default function LobbyPage() {
   const [maxUsers, setMaxUsers] = useState(8);
   const [gameType, setGameType] = useState<GameType>(GameType.CAH);
 
-  const { data: availableRooms, isLoading: roomsLoading } = api.room.getAvailableRooms.useQuery();
+  const { data: availableRooms, isLoading: roomsLoading } = api.room.getVisibleRooms.useQuery();
   const createRoomMutation = api.room.createRoom.useMutation();
   const joinRoomMutation = api.room.joinRoom.useMutation();
 

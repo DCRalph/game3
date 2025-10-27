@@ -3,8 +3,10 @@
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
-import { Users, Calendar, Gamepad2 } from "lucide-react";
+import { Users, Calendar, Gamepad2, Settings, Clock, CheckCircle, User } from "lucide-react";
 import type { RouterOutputs } from "~/trpc/react";
+import { api } from "~/trpc/react";
+import Link from "next/link";
 
 interface RoomCardProps {
   room: RouterOutputs["room"]["getAvailableRooms"][number];
@@ -16,13 +18,47 @@ const gameTypeMap = {
   CAH: "Cards Against Humanity",
 }
 
+const statusConfig = {
+  SETUP: {
+    label: "Setup",
+    icon: Settings,
+    variant: "secondary" as const,
+    color: "text-yellow-600",
+  },
+  WAITING_FOR_PLAYERS: {
+    label: "Waiting",
+    icon: Clock,
+    variant: "default" as const,
+    color: "text-blue-600",
+  },
+  IN_PROGRESS: {
+    label: "In Progress",
+    icon: Gamepad2,
+    variant: "destructive" as const,
+    color: "text-red-600",
+  },
+  COMPLETED: {
+    label: "Completed",
+    icon: CheckCircle,
+    variant: "outline" as const,
+    color: "text-green-600",
+  },
+}
+
 export function RoomCard({ room, onJoin, onSelect }: RoomCardProps) {
+  const meQuery = api.auth.me.useQuery();
+
   const isFull = room.maxUsers ? room._count.users >= room.maxUsers : false;
   const gameTypeDisplay = gameTypeMap[room.gameType as keyof typeof gameTypeMap] ?? room.gameType;
+  const statusInfo = statusConfig[room.status as keyof typeof statusConfig];
+  const StatusIcon = statusInfo?.icon || Settings;
+  const inRoom = room.users.some(user => user.id === meQuery.data?.session?.userId);
+  const canJoin = room.status === "WAITING_FOR_PLAYERS" && !isFull && !inRoom;
+  const isCreator = room.creator?.id === meQuery.data?.session?.userId;
 
   return (
     <Card
-      className={`cursor-pointer transition-all duration-200 hover:shadow-lg ${isFull ? "opacity-60" : "hover:scale-[1.02]"
+      className={`cursor-pointer transition-all duration-200 hover:shadow-lg ${!canJoin && !inRoom ? "opacity-60" : "hover:scale-[1.02]"
         }`}
       onClick={() => onSelect(room.code)}
     >
@@ -40,13 +76,26 @@ export function RoomCard({ room, onJoin, onSelect }: RoomCardProps) {
                 <Gamepad2 className="w-3 h-3 mr-1" />
                 {gameTypeDisplay}
               </Badge>
+              {statusInfo && (
+                <Badge variant={statusInfo.variant} className={`text-xs ${statusInfo.color}`}>
+                  <StatusIcon className="w-3 h-3 mr-1" />
+                  {statusInfo.label}
+                </Badge>
+              )}
             </div>
           </div>
-          {isFull && (
-            <Badge variant="destructive" className="text-xs">
-              Full
-            </Badge>
-          )}
+          <div className="flex items-center gap-2">
+            {isFull && (
+              <Badge variant="destructive" className="text-xs">
+                Full
+              </Badge>
+            )}
+            {room.status === "IN_PROGRESS" && (
+              <Badge variant="destructive" className="text-xs">
+                In Progress
+              </Badge>
+            )}
+          </div>
         </div>
       </CardHeader>
 
@@ -60,6 +109,12 @@ export function RoomCard({ room, onJoin, onSelect }: RoomCardProps) {
               </span>
             </div>
             <div className="flex items-center gap-1">
+              <User className="w-4 h-4" />
+              <span>
+                {room.creator?.name ?? "Unknown"}
+              </span>
+            </div>
+            <div className="flex items-center gap-1">
               <Calendar className="w-4 h-4" />
               <span>
                 {new Date(room.createdAt).toLocaleString()}
@@ -67,17 +122,36 @@ export function RoomCard({ room, onJoin, onSelect }: RoomCardProps) {
             </div>
           </div>
 
-          <Button
-            size="sm"
-            onClick={(e) => {
-              e.stopPropagation();
-              onJoin(room.code);
-            }}
-            disabled={isFull}
-            className="ml-2"
-          >
-            {isFull ? "Full" : "Join"}
-          </Button>
+          {inRoom ? (
+            <Link href="/game">
+              <Button
+                size="sm"
+                onClick={(e) => e.stopPropagation()}
+                className="ml-2"
+              >
+                Open
+              </Button>
+            </Link>
+          ) : (
+            <Button
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                onJoin(room.code);
+              }}
+              disabled={!canJoin}
+              className="ml-2"
+            >
+              {!canJoin
+                ? room.status === "IN_PROGRESS"
+                  ? "In Progress"
+                  : room.status === "SETUP"
+                    ? "Setup"
+                    : "Full"
+                : "Join"
+              }
+            </Button>
+          )}
         </div>
       </CardContent>
     </Card>

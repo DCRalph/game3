@@ -40,9 +40,12 @@ export const roomRouter = createTRPCRouter({
           code: roomCode,
           gameType: input.gameType,
           maxUsers: input.maxUsers ?? 16,
+          status: "SETUP", // Set initial status to setup
+          creatorId: ctx.session.userId, // Set the creator
         },
         include: {
           users: true,
+          creator: true,
         },
       });
 
@@ -93,6 +96,7 @@ export const roomRouter = createTRPCRouter({
         },
         include: {
           users: true,
+          creator: true,
         },
       });
 
@@ -100,8 +104,21 @@ export const roomRouter = createTRPCRouter({
         throw new Error("Room not found or not available");
       }
 
+      // Check if room is in a joinable status
+      if (room.status === "SETUP") {
+        throw new Error("Room is still being set up");
+      }
+
+      if (room.status === "IN_PROGRESS") {
+        throw new Error("Room is already in progress");
+      }
+
+      if (room.status === "COMPLETED") {
+        throw new Error("Room has been completed");
+      }
+
       // Check if room is full
-      if (room.users.length >= room.maxUsers) {
+      if (room.users && room.users.length >= room.maxUsers) {
         throw new Error("Room is full");
       }
 
@@ -143,12 +160,13 @@ export const roomRouter = createTRPCRouter({
         rooms: {
           include: {
             users: true,
+            creator: true,
           },
         },
       },
     });
 
-    const activeRoom = user?.rooms.find((room) => room.isActive);
+    const activeRoom = Array.isArray(user?.rooms) ? user.rooms.find((room) => room.isActive) : undefined;
 
     if (!activeRoom) {
       return null;
@@ -168,6 +186,7 @@ export const roomRouter = createTRPCRouter({
         },
         include: {
           users: true,
+          creator: true,
           _count: {
             select: {
               users: true,
@@ -188,9 +207,13 @@ export const roomRouter = createTRPCRouter({
     const rooms = await ctx.db.room.findMany({
       where: {
         isActive: true,
+        status: {
+          in: ["WAITING_FOR_PLAYERS", "IN_PROGRESS"], // Only show waiting and in-progress rooms
+        },
       },
       include: {
         users: true,
+        creator: true,
         _count: {
           select: {
             users: true,
@@ -204,5 +227,86 @@ export const roomRouter = createTRPCRouter({
 
     return rooms;
   }),
+
+  // Get rooms that the current user can see (including their own setup rooms)
+  getVisibleRooms: publicProcedure.query(async ({ ctx }) => {
+    const userId = ctx.session?.userId ?? "null";
+    const rooms = await ctx.db.room.findMany({
+      where: {
+        isActive: true,
+        OR: [
+          {
+            status: "WAITING_FOR_PLAYERS", // Anyone can see waiting rooms
+          },
+          {
+            status: "IN_PROGRESS", // Anyone can see in-progress rooms
+          },
+          {
+            status: "SETUP",
+            users: {
+              some: {
+                id: userId, // Only creator can see setup rooms
+              },
+            },
+          },
+        ],
+      },
+      include: {
+        users: true,
+        creator: true,
+        _count: {
+          select: {
+            users: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    return rooms;
+  }),
+
+  // Update room status
+  updateRoomStatus: protectedProcedure
+    .input(
+      z.object({
+        roomId: z.string(),
+        status: z.enum(["SETUP", "WAITING_FOR_PLAYERS", "IN_PROGRESS", "COMPLETED"]),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      // Check if user is the creator of the room
+      const room = await ctx.db.room.findFirst({
+        where: {
+          id: input.roomId,
+          creatorId: ctx.session.userId, // Only creator can change status
+        },
+      });
+
+      if (!room) {
+        throw new Error("Room not found or you are not the creator");
+      }
+
+      // Update room status
+      const updatedRoom = await ctx.db.room.update({
+        where: { id: input.roomId },
+        data: {
+          status: input.status,
+        },
+        include: {
+          users: true,
+          creator: true,
+          _count: {
+            select: {
+              users: true,
+            },
+          },
+        },
+      });
+
+      return updatedRoom;
+    }),
 
 });
