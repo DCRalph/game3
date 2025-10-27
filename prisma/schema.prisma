@@ -1,20 +1,279 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
-    provider = "prisma-client-js"
+  provider = "prisma-client-js"
 }
 
 datasource db {
-    provider = "sqlite"
-    url      = env("DATABASE_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model Post {
-    id        Int      @id @default(autoincrement())
-    name      String
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+  id        Int      @id @default(autoincrement())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-    @@index([name])
+  @@index([name])
+}
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  CAHPlayers CAHPlayer[]
+
+  @@index([name])
+}
+
+model CAHDeck {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  isActive  Boolean  @default(true)
+
+  cards CAHCard[]
+  games CAHGameDeck[]
+
+  @@unique([name])
+  @@index([isActive])
+}
+
+enum CAHCardType {
+  WHITE
+  BLACK
+}
+
+model CAHCard {
+  id        Int      @id @default(autoincrement())
+  type      CAHCardType
+  deckId    String
+  deck      CAHDeck @relation(fields: [deckId], references: [id], onDelete: Cascade)
+  content   String
+  // For black cards: Pick N (>=1). For white cards: null.
+  pick      Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  isActive  Boolean  @default(true)
+
+  // Relations into rounds
+  rounds     CAHRound[] @relation("RoundBlackCard")
+  roundsWon  CAHRound[] @relation("WinningWhiteCards")
+
+  // Appearances in game pools/usage
+  CAHgameCards CAHGameCard[]
+
+  // Indexing: favor common filters and uniqueness
+  // @@unique([deckId, type, content])
+  @@index([deckId, type])
+  @@index([type, isActive])
+  @@index([content])
+  // Application-level constraints to enforce:
+  // - CHECK (type = 'BLACK' AND pick IS NOT NULL OR type = 'WHITE' AND pick IS NULL)
+  // - CHECK (pick IS NULL OR pick >= 1)
+  // - CHECK (draw IS NULL OR draw >= 0)
+}
+
+model CAHGame {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  status    CAHGameStatus @default(LOBBY)
+  maxPlayers        Int?
+  winningScore      Int?
+  allowPlayerJoinsAfterStart Boolean @default(false)
+  shuffleSeed String?
+
+  decks   CAHGameDeck[]
+  players CAHPlayer[]
+  rounds  CAHRound[]
+  CAHgameCards CAHGameCard[]
+
+  @@index([status])
+  @@index([name])
+}
+
+enum CAHGameStatus {
+  LOBBY
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+model CAHGameDeck {
+  gameId String
+  deckId String
+
+  game CAHGame @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  deck CAHDeck @relation(fields: [deckId], references: [id])
+
+  includeWhite Boolean @default(true)
+  includeBlack Boolean @default(true)
+  position Int @default(0)
+
+  @@id([gameId, deckId])
+  @@index([deckId])
+  @@index([gameId, position])
+}
+
+model CAHRound {
+  id        String   @id @default(uuid())
+  gameId    String
+  game      CAHGame @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  roundNumber Int
+  status      CAHRoundStatus @default(WAITING_FOR_CAHSUBMISSIONS)
+
+  // Czar (judge) for this round
+  czarPlayerId String
+  czar         CAHPlayer @relation("RoundCzar", fields: [czarPlayerId], references: [id])
+
+  blackCardId Int
+  blackCard   CAHCard @relation("RoundBlackCard", fields: [blackCardId], references: [id])
+
+  // Snapshot of rules from the black card
+  pick Int
+  draw Int?
+
+  winningWhiteCards CAHCard[] @relation("WinningWhiteCards")
+  CAHsubmissions CAHSubmission[]
+  submittedCards CAHGameCard[]
+
+  // Fast lookup for current/last rounds
+  @@unique([gameId, roundNumber])
+  @@index([gameId, status])
+  @@index([czarPlayerId])
+  @@index([blackCardId])
+}
+
+enum CAHRoundStatus {
+  WAITING_FOR_CAHSUBMISSIONS
+  WAITING_FOR_JUDGMENT
+  COMPLETED
+}
+
+model CAHPlayer {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId String
+  user   User @relation(fields: [userId], references: [id])
+
+  gameId String
+  game   CAHGame @relation(fields: [gameId], references: [id], onDelete: Cascade)
+
+  seatNumber Int
+  score      Int      @default(0)
+  isActive   Boolean  @default(true)
+
+  hand CAHPlayerHand[]
+  CAHsubmissions CAHSubmission[]
+  roundsAsCzar CAHRound[] @relation("RoundCzar")
+  heldCards CAHGameCard[] @relation("CAHGameCardHolder")
+
+  @@index([userId])
+  @@index([gameId, isActive])
+  @@unique([gameId, userId])
+  // Optional: enforce unique display name within a game
+  // @@unique([gameId, name])
+}
+
+model CAHGameCard {
+  id      String @id @default(uuid())
+  gameId  String
+  cardId  Int
+
+  game CAHGame @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  card CAHCard @relation(fields: [cardId], references: [id])
+
+  state CAHGameCardState @default(IN_DRAW_PILE)
+  drawOrder Int?
+
+  holderPlayerId String?
+  holder        CAHPlayer? @relation("CAHGameCardHolder", fields: [holderPlayerId], references: [id])
+
+  submittedRoundId String?
+  submittedRound   CAHRound? @relation(fields: [submittedRoundId], references: [id])
+
+  CAHplayerHand CAHPlayerHand? @relation("CAHGameCardCAHPlayerHand")
+  CAHsubmissionItems CAHSubmissionItem[]
+
+  @@unique([gameId, cardId])
+  @@index([gameId, state, drawOrder])
+  @@index([holderPlayerId])
+  @@index([submittedRoundId])
+  @@index([cardId])
+  // Application-level invariants:
+  // - If holderPlayerId IS NOT NULL then state = 'IN_HAND'
+  // - If submittedRoundId IS NOT NULL then state = 'SUBMITTED'
+  // - For white-only hands/CAHsubmissions: enforce via code or DB CHECK with subqueries
+}
+
+enum CAHGameCardState {
+  IN_DRAW_PILE
+  IN_HAND
+  SUBMITTED
+  DISCARDED
+  USED
+}
+
+model CAHPlayerHand {
+  id String @id @default(uuid())
+
+  playerId  String
+  player    CAHPlayer @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  CAHgameCardId String
+  CAHgameCard   CAHGameCard @relation("CAHGameCardCAHPlayerHand", fields: [CAHgameCardId], references: [id], onDelete: Cascade)
+
+  addedAt DateTime @default(now())
+  position Int @default(0)
+
+  @@unique([CAHgameCardId])
+  @@index([playerId, position])
+}
+
+model CAHSubmission {
+  id        String   @id @default(uuid())
+
+  roundId   String
+  round     CAHRound @relation(fields: [roundId], references: [id], onDelete: Cascade)
+
+  playerId  String
+  player    CAHPlayer @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  items CAHSubmissionItem[]
+  isWinner Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@unique([roundId, playerId])
+  @@index([roundId])
+  @@index([playerId])
+  @@index([roundId, isWinner])
+}
+
+model CAHSubmissionItem {
+  id           Int @id @default(autoincrement())
+
+  CAHsubmissionId String
+  CAHsubmission   CAHSubmission @relation(fields: [CAHsubmissionId], references: [id], onDelete: Cascade)
+
+  CAHgameCardId   String
+  CAHgameCard     CAHGameCard @relation(fields: [CAHgameCardId], references: [id], onDelete: Cascade)
+
+  position Int
+
+  @@unique([CAHsubmissionId, position])
+  @@index([CAHsubmissionId])
+  @@index([CAHgameCardId])
 }
