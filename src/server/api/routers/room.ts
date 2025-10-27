@@ -36,6 +36,7 @@ export const roomRouter = createTRPCRouter({
       // Create the room
       const room = await ctx.db.room.create({
         data: {
+          name: input.roomName ?? `Room ${roomCode}`,
           code: roomCode,
           gameType: input.gameType,
           maxUsers: input.maxUsers ?? 16,
