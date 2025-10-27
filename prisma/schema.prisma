@@ -22,9 +22,33 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  socketId String? @unique
+
+  rooms Room[]
+
   CAHPlayers CAHPlayer[]
 
   @@index([name])
+}
+
+enum GameType {
+  CAH
+}
+
+model Room {
+  id        String   @id @default(uuid())
+  code      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  isActive  Boolean  @default(true)
+
+  users User[]
+
+  gameType GameType
+
+  CAHGame CAHGame?
+
+  @@index([code])
 }
 
 model CAHDeck {
@@ -82,6 +106,9 @@ model CAHGame {
   name      String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  roomId String @unique
+  room   Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
 
   status    CAHGameStatus @default(LOBBY)
   maxPlayers        Int?
@@ -161,7 +188,6 @@ enum CAHRoundStatus {
 
 model CAHPlayer {
   id        String   @id @default(uuid())
-  name      String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -174,6 +200,7 @@ model CAHPlayer {
   seatNumber Int
   score      Int      @default(0)
   isActive   Boolean  @default(true)
+  isAdmin    Boolean  @default(false)
 
   hand CAHPlayerHand[]
   CAHsubmissions CAHSubmission[]
