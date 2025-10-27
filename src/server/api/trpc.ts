@@ -6,9 +6,11 @@
  * TL;DR - This is where all the tRPC server stuff is created and plugged in. The pieces you will
  * need to use are documented accordingly near the end.
  */
-import { initTRPC } from "@trpc/server";
+import { TRPCError, initTRPC } from "@trpc/server";
 import superjson from "superjson";
 import { ZodError } from "zod";
+
+import { cookies } from 'next/headers'
 
 import { db } from "~/server/db";
 
@@ -25,8 +27,47 @@ import { db } from "~/server/db";
  * @see https://trpc.io/docs/server/context
  */
 export const createTRPCContext = async (opts: { headers: Headers }) => {
+
+  const cookieStore = await cookies();
+  let token = cookieStore.get("token")?.value;
+
+  if (!token) {
+    token = crypto.randomUUID();
+    cookieStore.set("token", token);
+  }
+
+
+  let session = await db.session.findUnique({
+    where: {
+      token: token,
+    },
+    include: {
+      user: true,
+    },
+  });
+
+  session ??= await db.session.create({
+    data: {
+      token: token,
+      expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30),
+    }, include: {
+      user: true,
+    },
+  });
+
+  session = await db.session.update({
+    where: { id: session.id },
+    data: {
+      expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 30),
+    },
+    include: {
+      user: true,
+    },
+  });
+
   return {
     db,
+    session,
     ...opts,
   };
 };
@@ -84,8 +125,8 @@ const timingMiddleware = t.middleware(async ({ next, path }) => {
 
   if (t._config.isDev) {
     // artificial delay in dev
-    const waitMs = Math.floor(Math.random() * 400) + 100;
-    await new Promise((resolve) => setTimeout(resolve, waitMs));
+    // const waitMs = Math.floor(Math.random() * 400) + 100;
+    // await new Promise((resolve) => setTimeout(resolve, waitMs));
   }
 
   const result = await next();
@@ -104,3 +145,30 @@ const timingMiddleware = t.middleware(async ({ next, path }) => {
  * are logged in.
  */
 export const publicProcedure = t.procedure.use(timingMiddleware);
+
+const authMiddleware = t.middleware(async ({ next, ctx }) => {
+
+  if (!ctx.session) { // User has no session
+    throw new TRPCError({ code: "UNAUTHORIZED" });
+  }
+
+  if (!ctx.session.userId || !ctx.session.user) { // User not authenticated
+    throw new TRPCError({ code: "UNAUTHORIZED" });
+  }
+
+  if (ctx.session.expiresAt < new Date()) { // Session expired
+    throw new TRPCError({ code: "UNAUTHORIZED" });
+  }
+
+  // Type assertion to narrow the type after all checks. fucking typescript.
+  const authenticatedSession = ctx.session as typeof ctx.session & {
+    userId: string;
+    user: NonNullable<typeof ctx.session.user>;
+  };
+
+  return next({
+    ctx: { ...ctx, session: authenticatedSession }
+  });
+});
+
+export const protectedProcedure = publicProcedure.use(authMiddleware);

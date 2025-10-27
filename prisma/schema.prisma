@@ -16,12 +16,27 @@ model Post {
   @@index([name])
 }
 
+model Session {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String?
+  user      User? @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  expiresAt DateTime
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
 model User {
   id        String   @id @default(uuid())
   name      String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  sessions Session[]
   socketId String? @unique
 
   rooms Room[]
@@ -29,6 +44,7 @@ model User {
   CAHPlayers CAHPlayer[]
 
   @@index([name])
+  @@index([socketId])
 }
 
 enum GameType {
@@ -38,11 +54,13 @@ enum GameType {
 model Room {
   id        String   @id @default(uuid())
   code      String
+  name      String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   isActive  Boolean  @default(true)
 
   users User[]
+  maxUsers Int @default(16)
 
   gameType GameType
 
@@ -111,7 +129,6 @@ model CAHGame {
   room   Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
 
   status    CAHGameStatus @default(LOBBY)
-  maxPlayers        Int?
   winningScore      Int?
   allowPlayerJoinsAfterStart Boolean @default(false)
   shuffleSeed String?

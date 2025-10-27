@@ -1,13 +1,14 @@
 import { createServer } from 'http'
 import { parse } from 'url'
 import next from 'next'
+import nextConfig from './next.config'
 
-import { Server } from "socket.io";
+import { createSocketServer } from './src/server/socketServer'
 
 const port = parseInt(process.env.PORT ?? '3000', 10)
 const dev = process.env.NODE_ENV !== 'production'
 
-const app = next({ dev, turbo: true })
+const app = next({ dev, turbo: true, conf: nextConfig })
 const handle = app.getRequestHandler()
 
 app.prepare().then(() => {
@@ -16,15 +17,8 @@ app.prepare().then(() => {
     handle(req, res, parsedUrl).catch(console.error)
   })
 
-  const io = new Server(httpServer);
-
-  io.on("connection", (socket) => {
-    console.log("a user connected");
-    socket.on("test", () => {
-      console.log("test event received");
-      socket.emit("message", "Hello from server");
-    });
-  });
+  if (!dev)
+    createSocketServer(httpServer);
 
   httpServer
     .once("error", (err) => {

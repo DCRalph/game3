@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { socket } from "~/server/socket";
+import { socket } from "~/lib/socketClient";
 
 export default function Home() {
   const [isConnected, setIsConnected] = useState(false);
@@ -42,6 +42,8 @@ export default function Home() {
 
   return (
     <div>
+      <button onClick={() => socket.connect()}>Connect</button>
+      <button onClick={() => socket.disconnect()}>Disconnect</button>
       <p>Status: {isConnected ? "connected" : "disconnected"}</p>
       <p>Transport: {transport}</p>
       <p>Socket ID: {socket.id}</p>
